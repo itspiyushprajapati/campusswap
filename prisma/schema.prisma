@@ -1,0 +1,207 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// User model for authentication and profiles
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  username     String   @unique
+  name         String?
+  password     String
+  avatar       String?
+  university   String?
+  universityId String?
+  isVerified   Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  items                Item[]
+  sentMessages         Message[]
+  buyerConversations   Conversation[] @relation("BuyerConversations")
+  sellerConversations  Conversation[] @relation("SellerConversations")
+  sentTransactions     Transaction[]  @relation("SentTransactions")
+  receivedTransactions Transaction[]  @relation("ReceivedTransactions")
+  reviewsReceived      Review[]       @relation("ReviewsReceived")
+  reviewsGiven         Review[]       @relation("ReviewsGiven")
+  bids                 Bid[]
+}
+
+// Item/Listing model
+model Item {
+  id          String     @id @default(cuid())
+  title       String
+  description String?    @db.Text
+  price       Float
+  condition   Condition
+  status      ItemStatus @default(AVAILABLE)
+  images      String[]
+
+  pickupLocation String?
+  isUrgent       Boolean @default(false)
+  isSold         Boolean @default(false)
+
+  saleType SaleType @default(FIXED)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  sellerId   String
+  categoryId String
+
+  seller        User           @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+  category      Category       @relation(fields: [categoryId], references: [id])
+  conversations Conversation[]
+  transactions  Transaction[]
+  auction       Auction?
+  reviews       Review[]
+}
+
+// Category model for organizing items
+model Category {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  slug        String   @unique
+  icon        String?
+  description String?
+  createdAt   DateTime @default(now())
+
+  items Item[]
+}
+
+// Conversation model for buyer-seller communication threads
+model Conversation {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  itemId   String
+  buyerId  String
+  sellerId String
+
+  item     Item      @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  buyer    User      @relation("BuyerConversations", fields: [buyerId], references: [id], onDelete: Cascade)
+  seller   User      @relation("SellerConversations", fields: [sellerId], references: [id], onDelete: Cascade)
+  messages Message[]
+
+  @@unique([itemId, buyerId, sellerId])
+  @@index([buyerId])
+  @@index([sellerId])
+  @@index([itemId])
+}
+
+// Message model for individual messages in a conversation
+model Message {
+  id        String   @id @default(cuid())
+  content   String   @db.Text
+  createdAt DateTime @default(now())
+  isRead    Boolean  @default(false)
+
+  senderId       String
+  conversationId String
+
+  sender       User         @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId])
+  @@index([senderId])
+}
+
+// Review model for seller ratings
+model Review {
+  id        String   @id @default(cuid())
+  rating    Int
+  comment   String?  @db.Text
+  createdAt DateTime @default(now())
+
+  reviewerId String
+  sellerId   String
+  itemId     String
+
+  reviewer User @relation("ReviewsGiven", fields: [reviewerId], references: [id], onDelete: Cascade)
+  seller   User @relation("ReviewsReceived", fields: [sellerId], references: [id], onDelete: Cascade)
+  item     Item @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  @@unique([reviewerId, itemId])
+  @@index([sellerId])
+  @@index([itemId])
+}
+
+// Auction model for bidding items
+model Auction {
+  id            String   @id @default(cuid())
+  startingPrice Float
+  currentBid    Float?
+  endTime       DateTime
+  createdAt     DateTime @default(now())
+
+  itemId String @unique
+
+  item Item  @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  bids Bid[]
+}
+
+// Bid model for auction bids
+model Bid {
+  id        String   @id @default(cuid())
+  amount    Float
+  createdAt DateTime @default(now())
+
+  auctionId String
+  bidderId  String
+
+  auction Auction @relation(fields: [auctionId], references: [id], onDelete: Cascade)
+  bidder  User    @relation(fields: [bidderId], references: [id], onDelete: Cascade)
+
+  @@index([auctionId])
+  @@index([bidderId])
+}
+
+// Transaction model for tracking sales/swaps
+model Transaction {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  itemId    String
+  buyerId   String
+  sellerId  String
+
+  item   Item @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  buyer  User @relation("ReceivedTransactions", fields: [buyerId], references: [id], onDelete: Cascade)
+  seller User @relation("SentTransactions", fields: [sellerId], references: [id], onDelete: Cascade)
+}
+
+// Enums
+enum Condition {
+  NEW
+  LIKE_NEW
+  GOOD
+  FAIR
+  POOR
+}
+
+enum ItemStatus {
+  AVAILABLE
+  PENDING
+  SOLD
+  RESERVED
+}
+
+enum TransactionStatus {
+  PENDING
+  COMPLETED
+  CANCELLED
+  DISPUTED
+}
+
+enum SaleType {
+  FIXED
+  AUCTION
+}
